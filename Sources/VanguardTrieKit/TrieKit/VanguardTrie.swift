@@ -10,7 +10,7 @@ public enum VanguardTrie {
   public final class Trie: Codable {
     // MARK: Lifecycle
 
-    public init(separator: String) {
+    public init(separator: Character) {
       self.readingSeparator = separator
       self.root = .init(id: 0)
       self.nodes = [:]
@@ -25,8 +25,24 @@ public enum VanguardTrie {
 
     public required init(from decoder: any Decoder) throws {
       let container = try decoder.container(keyedBy: CodingKeys.self)
+      let decodingErrorSep = DecodingError.dataCorrupted(
+        DecodingError.Context(
+          codingPath: container.codingPath,
+          debugDescription: "Separator is not a single character."
+        )
+      )
+      let decodingErrorRoot0 = DecodingError.dataCorrupted(
+        DecodingError.Context(
+          codingPath: container.codingPath,
+          debugDescription: "Root node with ID 0 not found in nodes dictionary"
+        )
+      )
 
-      self.readingSeparator = try container.decode(String.self, forKey: .readingSeparator)
+      let separatorRaw = try container.decode(String.self, forKey: .readingSeparator)
+      guard separatorRaw.count == 1 else { throw decodingErrorSep }
+      guard let separatorChar = separatorRaw.first else { throw decodingErrorSep }
+
+      self.readingSeparator = separatorChar
       let nodesExtracted = try container.decode(Set<TNode>.self, forKey: .nodes)
       var nodesMap = [Int: TNode]()
       nodesExtracted.forEach {
@@ -35,14 +51,7 @@ public enum VanguardTrie {
       self.nodes = nodesMap
 
       // 從節點字典中獲取根節點
-      guard let rootNode = nodes[0] else {
-        throw DecodingError.dataCorrupted(
-          DecodingError.Context(
-            codingPath: container.codingPath,
-            debugDescription: "Root node with ID 0 not found in nodes dictionary"
-          )
-        )
-      }
+      guard let rootNode = nodes[0] else { throw decodingErrorRoot0 }
       self.root = rootNode
       self.keyChainIDMap = [:]
       updateKeyChainIDMap()
@@ -242,7 +251,7 @@ public enum VanguardTrie {
       public let rawValue: Int32 // 必須得是 Int32，否則 SQLite 編碼可能會有問題。
     }
 
-    public let readingSeparator: String
+    public let readingSeparator: Character
     public let root: TNode
     public fileprivate(set) var nodes: [Int: TNode] // 新增：節點字典，以id為索引
     public fileprivate(set) var keyChainIDMap: [String: Set<Int>]
@@ -250,7 +259,7 @@ public enum VanguardTrie {
     public func encode(to encoder: any Encoder) throws {
       var container = encoder.container(keyedBy: CodingKeys.self)
 
-      try container.encode(readingSeparator, forKey: .readingSeparator)
+      try container.encode(String(readingSeparator), forKey: .readingSeparator)
       try container.encode(Set(nodes.values), forKey: .nodes)
     }
 
@@ -292,7 +301,7 @@ extension VanguardTrie.Trie {
     var currentNode = root
     var currentNodeID = 0
 
-    let key = readings.joined(separator: readingSeparator)
+    let key = readings.joined(separator: readingSeparator.description)
 
     // 遍歷關鍵字的每個字符
     key.forEach { char in
@@ -336,7 +345,7 @@ extension VanguardTrie.Trie {
         var results: [(readings: [String], entry: Entry)] = []
         for nodeID in nodeIDs {
           if let node = nodes[nodeID] {
-            let readings = node.readingKey.components(separatedBy: readingSeparator)
+            let readings = node.readingKey.split(separator: readingSeparator).map(\.description)
             node.entries.forEach { entry in
               results.append((readings: readings, entry: entry))
             }
@@ -375,7 +384,7 @@ extension VanguardTrie.Trie {
     readings: [String],
     entry: Entry
   )] {
-    let readings = node.readingKey.components(separatedBy: readingSeparator)
+    let readings = node.readingKey.split(separator: readingSeparator).map(\.description)
     return node.entries.map { (readings: readings, entry: $0) }
   }
 
@@ -412,7 +421,7 @@ extension VanguardTrie.Trie: VanguardTrieProtocol {
   public func getNodeIDs(keys: [String], filterType: EntryType, partiallyMatch: Bool) -> Set<Int> {
     switch partiallyMatch {
     case false:
-      return keyChainIDMap[keys.joined(separator: readingSeparator)] ?? []
+      return keyChainIDMap[keys.joined(separator: readingSeparator.description)] ?? []
     case true:
       guard !keys.isEmpty else { return [] }
 
@@ -422,7 +431,7 @@ extension VanguardTrie.Trie: VanguardTrieProtocol {
       // 從 keyChainIDMap 中查找所有鍵
       keyChainIDMap.forEach { keyChain, nodeIDs in
         // 只處理那些至少和首個查詢鍵匹配的鍵鏈
-        let keyComponents = keyChain.components(separatedBy: readingSeparator)
+        let keyComponents = keyChain.split(separator: readingSeparator).map(\.description)
 
         // 檢查長度是否匹配
         guard keyComponents.count == keys.count else { return }

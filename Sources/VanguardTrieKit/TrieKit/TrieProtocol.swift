@@ -9,7 +9,7 @@ public protocol VanguardTrieProtocol {
   typealias Entry = VanguardTrie.Trie.Entry
   typealias EntryType = VanguardTrie.Trie.EntryType
 
-  var readingSeparator: String { get }
+  var readingSeparator: Character { get }
   func getNodeIDs(keys: [String], filterType: EntryType, partiallyMatch: Bool) -> Set<Int>
   func getNode(nodeID: Int) -> TNode?
   func getEntries(node: TNode) -> [Entry]
@@ -42,7 +42,7 @@ extension VanguardTrieProtocol {
       let entries = getEntries(node: node)
 
       // 確保讀音數量匹配
-      let nodeReadings = node.readingKey.components(separatedBy: readingSeparator)
+      let nodeReadings = node.readingKey.split(separator: readingSeparator).map(\.description)
       guard nodeReadings.count == keys.count else { continue }
       // 確保每個讀音都以對應的前綴開頭
       let allPrefixMatched = zip(keys, nodeReadings).allSatisfy { $1.hasPrefix($0) }
@@ -118,7 +118,7 @@ extension VanguardTrieProtocol {
       // 3. 獲取每個節點的詞條
       for nodeID in nodeIDs {
         guard let node = getNode(nodeID: nodeID) else { continue }
-        let nodeReadings = node.readingKey.components(separatedBy: readingSeparator)
+        let nodeReadings = node.readingKey.split(separator: readingSeparator).map(\.description)
         // 使用緩存避免重複查詢
         let entries: [Entry]
         if let cachedEntries = processedNodeEntries[nodeID] {
@@ -144,7 +144,9 @@ extension VanguardTrieProtocol {
 
         // 5. 將符合條件的詞條添加到結果中
         results.append(contentsOf: filteredEntries.map { entry in
-          entry.asTuple(with: node.readingKey.components(separatedBy: readingSeparator))
+          entry.asTuple(
+            with: node.readingKey.split(separator: readingSeparator).map(\.description)
+          )
         })
       }
 
@@ -175,7 +177,9 @@ extension VanguardTrieProtocol {
         }
 
         results.append(contentsOf: filteredEntries.map { entry in
-          entry.asTuple(with: node.readingKey.components(separatedBy: readingSeparator))
+          entry.asTuple(
+            with: node.readingKey.split(separator: readingSeparator).map(\.description)
+          )
         })
       }
 

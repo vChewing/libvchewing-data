@@ -63,7 +63,7 @@ extension VanguardTrie {
       """)
 
       // 添加分隔符配置
-      let escapedSeparator = trie.readingSeparator.replacingOccurrences(of: "'", with: "''")
+      let escapedSeparator = String(trie.readingSeparator).replacingOccurrences(of: "'", with: "''")
       sqlCommands.append("-- 儲存分隔符設定")
       sqlCommands
         .append("INSERT INTO config (key, value) VALUES ('separator', '\(escapedSeparator)');")
