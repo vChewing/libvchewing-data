@@ -38,23 +38,26 @@ foreach ($repoPath in $Repos) {
   
   Push-Location $fullPath
   try {
-    Write-Host "[INFO] Running git filter-branch to rewrite history..." -ForegroundColor Yellow
+    Write-Host "[INFO] Rewriting .gitmodules in all commits using git filter-branch..." -ForegroundColor Yellow
     
-    # Build sed commands for each URL replacement
-    $sedCommands = $oldURLs | ForEach-Object { 
-      $escaped = $_ -replace '/', '\/'
-      $escapedNew = $newURL -replace '/', '\/'
-      "s|$escaped|$escapedNew|g"
-    }
-    $sedScript = $sedCommands -join '; '
-    
-    # Run filter-branch to rewrite .gitmodules in all commits
+    # Suppress deprecated warning
     $env:FILTER_BRANCH_SQUELCH_WARNING = "1"
-    git filter-branch --force --tree-filter @"
+    
+    # Create a filter script that will be executed for each commit
+    $filterScript = @"
 if [ -f .gitmodules ]; then
-  sed -i '$sedScript' .gitmodules || sed -i '' '$sedScript' .gitmodules 2>/dev/null
+  # Use perl for reliable in-place editing across platforms (case-insensitive)
+  perl -i -pe 's|https://gitee\.com/vchewing/libvchewing-data\.git|$newURL|gi' .gitmodules
+  perl -i -pe 's|https://gitee\.com/vchewing/libvchewing-data|$newURL|gi' .gitmodules
+  perl -i -pe 's|http://gitee\.com/vchewing/libvchewing-data\.git|$newURL|gi' .gitmodules
+  perl -i -pe 's|http://gitee\.com/vchewing/libvchewing-data|$newURL|gi' .gitmodules
+  perl -i -pe 's|git\@gitee\.com:vchewing/libvchewing-data\.git|$newURL|gi' .gitmodules
+  perl -i -pe 's|git://gitee\.com/vchewing/libvchewing-data|$newURL|gi' .gitmodules
 fi
-"@ --tag-name-filter cat -- --all 2>&1 | Out-Null
+"@
+    
+    # Run filter-branch with tree-filter (checks out files, slower but reliable)
+    git filter-branch --force --tree-filter $filterScript --tag-name-filter cat -- --all
     
     if ($LASTEXITCODE -ne 0) {
       throw "git filter-branch failed for $fullPath"
@@ -78,6 +81,12 @@ fi
       Write-Host $grepResult -ForegroundColor Red
     } else {
       Write-Host "[OK] Successfully replaced all URLs in $fullPath" -ForegroundColor Green
+    }
+    
+    # Clean up filter-branch backup refs
+    Write-Host "[INFO] Cleaning up backup refs..." -ForegroundColor Yellow
+    git for-each-ref --format="%(refname)" refs/original/ | ForEach-Object {
+      git update-ref -d $_
     }
     
     # Run garbage collection
